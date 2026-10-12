@@ -1,7 +1,11 @@
-from rest_framework import viewsets, generics
+from django.shortcuts import get_object_or_404
+from rest_framework import viewsets, generics, status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from lms.models import Course, Lesson
+from lms.models import Course, Lesson, Subscription
+from lms.paginators import LmsPagination
 from lms.serializers import CourseSerializer, LessonSerializer
 from users.permissions import IsModerator, IsOwner
 
@@ -12,6 +16,7 @@ def is_moderator(user):
 
 class CourseViewSet(viewsets.ModelViewSet):
     serializer_class = CourseSerializer
+    pagination_class = LmsPagination
 
     def get_queryset(self):
         if is_moderator(self.request.user):
@@ -43,6 +48,7 @@ class LessonQuerysetMixin:
 class LessonListAPIView(LessonQuerysetMixin, generics.ListAPIView):
     serializer_class = LessonSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = LmsPagination
 
 
 class LessonCreateAPIView(generics.CreateAPIView):
@@ -66,3 +72,19 @@ class LessonUpdateAPIView(LessonQuerysetMixin, generics.UpdateAPIView):
 class LessonDestroyAPIView(LessonQuerysetMixin, generics.DestroyAPIView):
     serializer_class = LessonSerializer
     permission_classes = [IsAuthenticated, IsOwner, ~IsModerator]
+
+
+class SubscriptionAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        course_id = request.data.get('course_id')
+        course = get_object_or_404(Course, pk=course_id)
+        subscription = Subscription.objects.filter(user=request.user, course=course)
+        if subscription.exists():
+            subscription.delete()
+            message = 'Подписка удалена'
+        else:
+            Subscription.objects.create(user=request.user, course=course)
+            message = 'Подписка добавлена'
+        return Response({'message': message}, status=status.HTTP_200_OK)
